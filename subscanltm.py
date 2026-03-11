@@ -43,6 +43,7 @@ console = Console()
 VERSION = "1.2.0"
 AUTHOR  = "@DarkZFull"
 CANAL   = "https://t.me/ltmdkz"
+SUBTITULO = "Escaner de subdominios y bug hosts"
 TIMEOUT = 8
 THREADS = 50
 
@@ -129,7 +130,7 @@ def banner():
     console.print()
     console.print("  [bold bright_yellow] ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄[/bold bright_yellow]")
     console.print("  [bold bright_yellow] ██[/bold bright_yellow][bold bright_white]  SubScan[/bold bright_white][bold bright_green]LTM[/bold bright_green][bold bright_yellow]                           ██[/bold bright_yellow]")
-    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Bug Host Intelligence Tool  v{:<7}[/dim white][bold bright_yellow]██[/bold bright_yellow]".format(VERSION))
+    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Escaner de subdominios y bug hosts  v{:<4}[/dim white][bold bright_yellow]██[/bold bright_yellow]".format(VERSION))
     console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Creado por [/dim white][bold bright_green]{:<10}[/bold bright_green][dim white]                [/dim white][bold bright_yellow]██[/bold bright_yellow]".format(AUTHOR))
     console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Canal: [/dim white][bold bright_cyan]{:<20}[/bold bright_cyan][dim white]          [/dim white][bold bright_yellow]██[/bold bright_yellow]".format(CANAL))
     console.print("  [bold bright_yellow] ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[/bold bright_yellow]")
