@@ -1,29 +1,57 @@
 # SubScanLTM 🔍
 
-**Bug Host Intelligence Tool**  
-Creado por [@DarkZFull](https://t.me/DarkZFull) — Canal: [https://t.me/ltmdkz](https://t.me/ltmdkz)
+**Escaner de subdominios y bug hosts**  
+Creado por [https://t.me/DarkZFull](https://t.me/DarkZFull) — Canal: [https://t.me/ltmdkz](https://t.me/ltmdkz)
 
 ---
 
 ## ¿Qué es SubScanLTM?
 
-Herramienta todo en uno para descubrir **bug hosts**, escanear subdominios, detectar CDN (Cloudflare, Cloudfront, Akamai...), analizar puertos, registros DNS y más. Diseñada para correr en **Termux (Android)** y Linux.
+Herramienta todo en uno para descubrir **bug hosts**, escanear subdominios, detectar CDN (Cloudflare, Cloudfront, Akamai...), analizar puertos, registros DNS y más. Compatible con **Termux, Ubuntu, Debian, Kali Linux y cualquier sistema con Python 3**.
 
 ---
 
-## ⚡ Instalación rápida (Termux / Linux)
+## ⚡ Instalación
+
+### 📱 Termux (Android)
 
 ```bash
-wget https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanltm.py && python subscanltm.py
+wget -O subscanltm.py https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanltm.py && python subscanltm.py
 ```
 
-O con curl:
+### 🐧 Ubuntu / Debian
 
 ```bash
-curl -O https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanltm.py && python subscanltm.py
+wget -O subscanltm.py https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanltm.py && python3 subscanltm.py
 ```
 
-> Las dependencias se instalan **automáticamente** al primer inicio.
+### 💀 Kali Linux
+
+```bash
+wget -O subscanltm.py https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanltm.py && python3 subscanltm.py
+```
+
+### 🌐 Cualquier Linux (curl)
+
+```bash
+curl -O https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanltm.py && python3 subscanltm.py
+```
+
+> ✅ Las dependencias se instalan **automáticamente** al primer inicio. No necesitas instalar nada antes.
+
+---
+
+## ▶️ Cómo ejecutar
+
+**Termux:**
+```bash
+python subscanltm.py
+```
+
+**Ubuntu / Kali / Debian / VPS:**
+```bash
+python3 subscanltm.py
+```
 
 ---
 
@@ -43,17 +71,16 @@ curl -O https://raw.githubusercontent.com/DarkFull0726/SubScanLTM/main/subscanlt
 
 ## 📋 Requisitos
 
-- Python 3.7+
-- Termux (Android) o Linux
+- Python 3.7 o superior
+- Conexión a internet
 
 ---
 
 ## 📞 Contacto
 
-- **Telegram:** [@DarkZFull](https://t.me/DarkZFull)  
+- **Telegram:** [https://t.me/DarkZFull](https://t.me/DarkZFull)
 - **Canal:** [https://t.me/ltmdkz](https://t.me/ltmdkz)
 
 ---
 
-> 
-
+> DISFRUTA 
