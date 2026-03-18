@@ -299,20 +299,53 @@ def subfinder():
         console.print("  [yellow]⚠ Sin resultados[/yellow]")
         input("\n  Enter..."); return
 
-    ips = {}
-    def res(s): ips[s] = resolve_ip(s)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as ex:
-        ex.map(res, subs)
+    # Resolver IP + detectar CDN por cada subdominio
+    info = {}  # sub -> {ip, cdn}
+    lock2 = threading.Lock()
+
+    def analizar(s):
+        ip = resolve_ip(s)
+        cdn = "—"
+        # Intentar HTTP para detectar CDN por headers
+        cnames = []
+        try:
+            cnames = [c.to_text().lower() for c in dns.resolver.resolve(s, "CNAME")]
+        except: pass
+        try:
+            r = requests.get(f"https://{s}", timeout=5, verify=False,
+                             allow_redirects=False,
+                             headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
+            cdns = detect_cdn(s, r, cnames)
+        except:
+            cdns = detect_cdn(s, cnames=cnames)
+        cdn = ", ".join(cdns)
+        with lock2:
+            info[s] = {"ip": ip, "cdn": cdn}
+
+    console.print()
+    with Progress(SpinnerColumn("dots", style="bright_cyan"),
+                  TextColumn("[bright_cyan]Detectando CDN y resolviendo IPs..."),
+                  BarColumn(complete_style="bright_green"),
+                  TextColumn("{task.completed}/{task.total}"),
+                  console=console) as p:
+        task = p.add_task("", total=len(subs))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=30) as ex:
+            for f in concurrent.futures.as_completed({ex.submit(analizar, s): s for s in subs}):
+                p.advance(task)
 
     table = Table(box=box.ROUNDED, header_style="bold bright_cyan",
                   border_style="cyan", show_lines=False)
     table.add_column("#",          justify="right", style="dim white")
     table.add_column("Subdominio", style="bright_white")
     table.add_column("IP",         style="bright_cyan")
+    table.add_column("CDN",        style="bright_magenta", max_width=20)
     table.add_column("Activo",     justify="center")
+
     for i, s in enumerate(sorted(subs), 1):
-        ip = ips.get(s)
-        table.add_row(str(i), s, ip or "—",
+        d = info.get(s, {"ip": None, "cdn": "—"})
+        ip  = d["ip"]
+        cdn = d["cdn"]
+        table.add_row(str(i), s, ip or "—", cdn,
                       "[bold bright_green]SI[/bold bright_green]" if ip else "[dim red]NO[/dim red]")
     console.print(table)
     console.print(f"\n  [bold bright_cyan]◆ Total: {len(subs)} subdominios[/bold bright_cyan]")
