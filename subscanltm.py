@@ -485,27 +485,22 @@ def subfinder():
             for f in concurrent.futures.as_completed({ex.submit(analizar,s):s for s in subs}):
                 p.advance(task)
 
-    # Tabla resumen
-    table = Table(box=box.ROUNDED, header_style="bold bright_cyan",
-                  border_style="cyan", show_lines=False)
-    table.add_column("#",          justify="right", style="dim white")
-    table.add_column("Subdominio", style="bright_white", no_wrap=True)
-    table.add_column("IP",         style="bright_cyan",    max_width=15)
-    table.add_column("Cod",        justify="center",       max_width=5)
-    table.add_column("CDN",        style="bright_magenta", max_width=16)
-    table.add_column("Tipo",       style="bright_yellow",  max_width=18)
-    table.add_column("Activo",     justify="center")
+    # Tabla resumen — simple para que entre en pantalla movil
+    table = Table(box=box.SIMPLE_HEAD, header_style="bold bright_cyan",
+                  show_lines=False, pad_edge=False)
+    table.add_column("#",          justify="right", style="dim white",    width=3)
+    table.add_column("Subdominio", style="bright_white",                  max_width=34)
+    table.add_column("CDN",        style="bright_magenta",                max_width=12)
+    table.add_column("OK",         justify="center",                      width=4)
 
     for i, s in enumerate(sorted(subs), 1):
-        d   = info.get(s, {"ip":None,"cdn":"—","codigo":"—","tipo":"—"})
+        d   = info.get(s, {"ip":None,"cdn":"—"})
         ip  = d["ip"]
-        cod = d["codigo"]
-        color_cod = "bright_green" if cod == "200" else "yellow" if cod.startswith("3") else "dim"
+        cdn = d["cdn"][:12]
         table.add_row(
-            str(i), s, ip or "—",
-            f"[{color_cod}]{cod}[/{color_cod}]",
-            d["cdn"][:16], d["tipo"][:18],
-            "[bold bright_green]SI[/bold bright_green]" if ip else "[dim red]NO[/dim red]"
+            str(i), s,
+            cdn,
+            "[bright_green]SI[/bright_green]" if ip else "[dim red]NO[/dim red]"
         )
     console.print(table)
     console.print(f"\n  [bold bright_cyan]◆ Total: {len(subs)} subdominios[/bold bright_cyan]")
