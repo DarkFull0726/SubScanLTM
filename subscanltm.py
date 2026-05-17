@@ -78,74 +78,79 @@ CDN_SIGNATURES = {
 #   PAYLOADS HTTP CUSTOM
 # ════════════════════════════════════════════════
 def generar_payload(host, cdn, puerto):
-    """Genera payload sugerido para HTTP Custom segun el tipo de host"""
+    """
+    Genera payload para HTTP Custom.
+    Cloudflare y Cloudfront usan el mismo formato:
+      GET / HTTP/1.1[crlf]Host: DOMINIO[crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
+    El host va FUERA del payload en HTTP Custom (campo SNI/Host separado).
+    """
+    es_cf    = "Cloudflare" in cdn
+    es_cfr   = "Cloudfront" in cdn
+    es_cdn   = any(x in cdn for x in ["Akamai","Fastly","Azure","Google","BunnyCDN"])
+    es_443   = puerto in [443, 8443]
 
-    es_cf   = "Cloudflare" in cdn
-    es_cf_front = es_cf
-    es_cdn  = any(x in cdn for x in ["Cloudfront","Akamai","Fastly","Azure","Google","BunnyCDN"])
-    es_443  = puerto in [443, 8443]
-
-    if es_cf and es_443:
-        tipo = "Cloudflare HTTPS"
+    # Cloudflare o Cloudfront — mismo payload, host como front
+    if es_cf or es_cfr:
+        nombre = "Cloudflare" if es_cf else "Cloudfront (AWS)"
+        tipo   = f"{nombre} WebSocket"
         payload = (
-            "CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
+            f"GET / HTTP/1.1[crlf]"
             f"Host: {host}[crlf]"
-            "Upgrade: websocket[crlf][crlf]"
+            f"Connection: Upgrade[crlf]"
+            f"User-Agent: [ua][crlf]"
+            f"Upgrade: websocket[crlf][crlf]"
         )
         front = host
-        nota  = "SNI: " + host
+        nota  = f"Host en campo SNI/Host de HTTP Custom: {host}"
 
-    elif es_cf and not es_443:
-        tipo = "Cloudflare HTTP"
-        payload = (
-            "GET http://[host_vps]/ HTTP/1.1[crlf]"
-            f"Host: {host}[crlf]"
-            "Connection: Keep-Alive[crlf][crlf]"
-        )
-        front = "—"
-        nota  = "Puerto 80 directo"
-
+    # Otro CDN con HTTPS
     elif es_cdn and es_443:
         tipo = "CDN Front HTTPS"
         payload = (
-            "CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
+            f"GET / HTTP/1.1[crlf]"
             f"Host: {host}[crlf]"
-            "X-Forward-Host: [host_vps][crlf]"
-            "Upgrade: websocket[crlf][crlf]"
+            f"Connection: Upgrade[crlf]"
+            f"User-Agent: [ua][crlf]"
+            f"Upgrade: websocket[crlf][crlf]"
         )
         front = host
-        nota  = "Domain fronting habilitado"
+        nota  = "Domain fronting via CDN"
 
+    # Otro CDN con HTTP
     elif es_cdn and not es_443:
         tipo = "CDN Front HTTP"
         payload = (
-            "GET http://[host_vps]/ HTTP/1.1[crlf]"
+            f"GET / HTTP/1.1[crlf]"
             f"Host: {host}[crlf]"
-            "X-Forward-Host: [host_vps][crlf]"
-            "Connection: Keep-Alive[crlf][crlf]"
+            f"Connection: Keep-Alive[crlf]"
+            f"User-Agent: [ua][crlf][crlf]"
         )
         front = host
         nota  = "Domain fronting HTTP"
 
+    # Sin CDN HTTPS directo
     elif es_443:
         tipo = "Direct HTTPS"
         payload = (
-            "CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
+            f"CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
             f"Host: {host}[crlf]"
-            "Connection: Keep-Alive[crlf][crlf]"
+            f"Connection: Keep-Alive[crlf]"
+            f"User-Agent: [ua][crlf][crlf]"
         )
         front = "—"
-        nota  = "SSL directo sin CDN"
+        nota  = "Conexion directa HTTPS sin CDN"
 
+    # Sin CDN HTTP directo
     else:
         tipo = "Direct HTTP"
         payload = (
-            "GET http://[host_vps]/ HTTP/1.1[crlf]"
+            f"GET / HTTP/1.1[crlf]"
             f"Host: {host}[crlf]"
-            "Connection: Keep-Alive[crlf][crlf]"
+            f"Connection: Keep-Alive[crlf]"
+            f"User-Agent: [ua][crlf][crlf]"
         )
         front = "—"
-        nota  = "Sin CDN, conexion directa"
+        nota  = "Conexion directa HTTP sin CDN"
 
     return tipo, payload, front, nota
 
@@ -443,27 +448,34 @@ def subfinder():
         codigo   = "—"
         cdn_str  = "Ninguno"
         tipo = payload = front = nota = "—"
-        puerto_usado = 443
+        puerto_usado = 80
 
+        # CNAME — fuente mas confiable de CDN
         try:
             cnames = [c.to_text().lower() for c in dns.resolver.resolve(s,"CNAME")]
         except: pass
 
-        for port in [443, 80]:
+        # Intentar HTTP request para obtener headers
+        for port in [80, 443]:
             proto = "https" if port == 443 else "http"
             try:
                 r = requests.get(f"{proto}://{s}", timeout=5, verify=False,
                                  allow_redirects=False,
                                  headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
-                cdns     = detect_cdn(s, r, cnames)
-                cdn_str  = ", ".join(cdns)
+                cdns_detectados = detect_cdn(s, r, cnames)
+                # Si headers no detectaron CDN pero CNAME si — usar CNAME
+                if cdns_detectados == ["Ninguno"] and cnames:
+                    cdns_detectados = detect_cdn(s, cnames=cnames)
+                cdn_str  = ", ".join(cdns_detectados)
                 servidor = r.headers.get("server", r.headers.get("Server","—"))
                 codigo   = str(r.status_code)
                 puerto_usado = port
                 break
             except:
-                cdns    = detect_cdn(s, cnames=cnames)
-                cdn_str = ", ".join(cdns)
+                # Sin respuesta HTTP — intentar solo por CNAME
+                cdns_por_cname = detect_cdn(s, cnames=cnames)
+                if cdns_por_cname != ["Ninguno"]:
+                    cdn_str = ", ".join(cdns_por_cname)
 
         tipo, payload, front, nota = generar_payload(s, cdn_str, puerto_usado)
 
