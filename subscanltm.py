@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # ════════════════════════════════════════════════
-#   SubScanLTM — Bug Host Intelligence Tool
+#   SubScanLTM — Escaner de subdominios y bug hosts
 #   Creado por @DarkZFull
-#   Canal: https://t.me/ltmdkz
+#   Canal: https://t.me/LTMCHANNEL
 # ════════════════════════════════════════════════
 
 import os, sys, subprocess
@@ -15,11 +15,11 @@ def auto_install():
         try: __import__(dep.replace("-","_"))
         except ImportError: missing.append(dep)
     if missing:
-        print(f"\n  ◈ Instalando: {', '.join(missing)}...")
+        print(f"\n  Instalando: {', '.join(missing)}...")
         for dep in missing:
             subprocess.run([sys.executable,"-m","pip","install",dep,"-q"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("  ◈ Listo\n")
+        print("  Listo\n")
 
 auto_install()
 
@@ -32,7 +32,6 @@ import dns.resolver
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich.panel import Panel
 from rich import box
 import colorama
 colorama.init()
@@ -40,12 +39,14 @@ colorama.init()
 requests.packages.urllib3.disable_warnings()
 console = Console()
 
-VERSION = "1.2.0"
-AUTHOR  = "@DarkZFull"
-CANAL   = "https://t.me/ltmdkz"
-SUBTITULO = "Escaner de subdominios y bug hosts"
-TIMEOUT = 8
-THREADS = 50
+VERSION  = "1.3.0"
+AUTHOR   = "@DarkZFull"
+CANAL    = "https://t.me/LTMCHANNEL"
+TIMEOUT  = 8
+THREADS  = 50
+
+# Carpeta de guardado
+SAVE_DIR = "/sdcard/Download/SubScanLTM"
 
 COMMON_PORTS = [21,22,23,25,53,80,110,143,443,465,587,993,995,
                 1080,3128,3306,3389,5432,6379,8080,8081,8443,
@@ -74,6 +75,82 @@ CDN_SIGNATURES = {
 }
 
 # ════════════════════════════════════════════════
+#   PAYLOADS HTTP CUSTOM
+# ════════════════════════════════════════════════
+def generar_payload(host, cdn, puerto):
+    """Genera payload sugerido para HTTP Custom segun el tipo de host"""
+
+    es_cf   = "Cloudflare" in cdn
+    es_cf_front = es_cf
+    es_cdn  = any(x in cdn for x in ["Cloudfront","Akamai","Fastly","Azure","Google","BunnyCDN"])
+    es_443  = puerto in [443, 8443]
+
+    if es_cf and es_443:
+        tipo = "Cloudflare HTTPS"
+        payload = (
+            "CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
+            f"Host: {host}[crlf]"
+            "Upgrade: websocket[crlf][crlf]"
+        )
+        front = host
+        nota  = "SNI: " + host
+
+    elif es_cf and not es_443:
+        tipo = "Cloudflare HTTP"
+        payload = (
+            "GET http://[host_vps]/ HTTP/1.1[crlf]"
+            f"Host: {host}[crlf]"
+            "Connection: Keep-Alive[crlf][crlf]"
+        )
+        front = "—"
+        nota  = "Puerto 80 directo"
+
+    elif es_cdn and es_443:
+        tipo = "CDN Front HTTPS"
+        payload = (
+            "CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
+            f"Host: {host}[crlf]"
+            "X-Forward-Host: [host_vps][crlf]"
+            "Upgrade: websocket[crlf][crlf]"
+        )
+        front = host
+        nota  = "Domain fronting habilitado"
+
+    elif es_cdn and not es_443:
+        tipo = "CDN Front HTTP"
+        payload = (
+            "GET http://[host_vps]/ HTTP/1.1[crlf]"
+            f"Host: {host}[crlf]"
+            "X-Forward-Host: [host_vps][crlf]"
+            "Connection: Keep-Alive[crlf][crlf]"
+        )
+        front = host
+        nota  = "Domain fronting HTTP"
+
+    elif es_443:
+        tipo = "Direct HTTPS"
+        payload = (
+            "CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
+            f"Host: {host}[crlf]"
+            "Connection: Keep-Alive[crlf][crlf]"
+        )
+        front = "—"
+        nota  = "SSL directo sin CDN"
+
+    else:
+        tipo = "Direct HTTP"
+        payload = (
+            "GET http://[host_vps]/ HTTP/1.1[crlf]"
+            f"Host: {host}[crlf]"
+            "Connection: Keep-Alive[crlf][crlf]"
+        )
+        front = "—"
+        nota  = "Sin CDN, conexion directa"
+
+    return tipo, payload, front, nota
+
+
+# ════════════════════════════════════════════════
 #   UTILIDADES
 # ════════════════════════════════════════════════
 def cls(): os.system("clear")
@@ -88,17 +165,17 @@ def resolve_ip(domain):
     except: return None
 
 def ask(prompt):
-    return console.input(f"  [bold yellow]  ❯[/bold yellow] {prompt}: ").strip()
+    return console.input(f"  [bold yellow]  >[/bold yellow] {prompt}: ").strip()
 
 def row(label, value, color="bright_white"):
-    console.print(f"  [dim white]  {label:<22}[/dim white][{color}]{value}[/{color}]")
+    console.print(f"  [dim white]  {label:<24}[/dim white][{color}]{value}[/{color}]")
 
 def titulo(texto):
     console.print(f"\n  [bold yellow]◆[/bold yellow] [bold bright_white]{texto}[/bold bright_white]")
-    console.print(f"  [yellow]{'─'*50}[/yellow]")
+    console.print(f"  [yellow]{'─'*52}[/yellow]")
 
 def separador():
-    console.print(f"  [dim yellow]{'─'*50}[/dim yellow]")
+    console.print(f"  [dim yellow]{'─'*52}[/dim yellow]")
 
 def http_get(url):
     try:
@@ -121,18 +198,35 @@ def detect_cdn(domain, response=None, cnames=None):
         if hit: found.append(cdn)
     return found if found else ["Ninguno"]
 
+def guardar_archivo(nombre, contenido):
+    """Guarda en /sdcard/Download/SubScanLTM/ y muestra ruta"""
+    try:
+        os.makedirs(SAVE_DIR, exist_ok=True)
+        ruta = os.path.join(SAVE_DIR, nombre)
+        with open(ruta, "w") as f:
+            f.write(contenido)
+        console.print(f"  [bright_green]✔ Guardado en:[/bright_green] [white]{ruta}[/white]")
+        return ruta
+    except:
+        # Fallback a home si no hay acceso a sdcard
+        ruta = os.path.expanduser(f"~/{nombre}")
+        with open(ruta, "w") as f:
+            f.write(contenido)
+        console.print(f"  [yellow]✔ Guardado en (home):[/yellow] [white]{ruta}[/white]")
+        return ruta
+
+
 # ════════════════════════════════════════════════
 #   BANNER
 # ════════════════════════════════════════════════
 def banner():
     cls()
-    # Arte distinto — letras bloque estilo "S S L"
     console.print()
     console.print("  [bold bright_yellow] ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄[/bold bright_yellow]")
     console.print("  [bold bright_yellow] ██[/bold bright_yellow][bold bright_white]  SubScan[/bold bright_white][bold bright_green]LTM[/bold bright_green][bold bright_yellow]                           ██[/bold bright_yellow]")
-    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Escaner de subdominios y bug hosts  v{:<4}[/dim white][bold bright_yellow]██[/bold bright_yellow]".format(VERSION))
-    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Creado por [/dim white][bold bright_green]{:<10}[/bold bright_green][dim white]                [/dim white][bold bright_yellow]██[/bold bright_yellow]".format(AUTHOR))
-    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Canal: [/dim white][bold bright_cyan]{:<20}[/bold bright_cyan][dim white]          [/dim white][bold bright_yellow]██[/bold bright_yellow]".format(CANAL))
+    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Escaner de subdominios y bug hosts  [/dim white][bold bright_yellow]██[/bold bright_yellow]")
+    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Creado por [/dim white][bold bright_green]{:<10}[/bold bright_green][dim white]  v{:<14}[/dim white][bold bright_yellow]██[/bold bright_yellow]".format(AUTHOR, VERSION))
+    console.print("  [bold bright_yellow] ██[/bold bright_yellow][dim white]  Canal: [/dim white][bold bright_cyan]{:<30}[/bold bright_cyan][bold bright_yellow]██[/bold bright_yellow]".format(CANAL))
     console.print("  [bold bright_yellow] ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[/bold bright_yellow]")
     console.print()
 
@@ -141,27 +235,24 @@ def menu():
     console.print("  [bold bright_green]  MENU PRINCIPAL[/bold bright_green]")
     console.print("  [dim yellow]  ══════════════════════════════════════[/dim yellow]")
     console.print()
-
-    opciones = [
-        ("1", "HOST SCANNER",  "bright_green",  "Detecta bug hosts HTTP/HTTPS"),
-        ("2", "SUBFINDER",     "bright_cyan",   "Enumera subdominios"),
-        ("3", "IP LOOKUP",     "bright_magenta","Reverse IP + geolocalizacion"),
-        ("4", "PORT SCANNER",  "bright_yellow", "Escanea puertos abiertos"),
-        ("5", "DNS RECORDS",   "bright_blue",   "Registros A, MX, NS, TXT..."),
-        ("6", "HOST INFO",     "bright_white",  "CDN, servidor, SSL, geo"),
-        ("7", "FULL SCAN",     "bold bright_red","Todo en uno sobre un dominio"),
-        ("0", "SALIR",         "dim red",       ""),
-    ]
-
-    for num, name, color, desc in opciones:
+    for num, name, color, desc in [
+        ("1","HOST SCANNER",  "bright_green",   "Detecta bug hosts + payload HTTP Custom"),
+        ("2","SUBFINDER",     "bright_cyan",    "Subdominios + deteccion de CDN"),
+        ("3","IP LOOKUP",     "bright_magenta", "Reverse IP + geolocalizacion"),
+        ("4","PORT SCANNER",  "bright_yellow",  "Escanea puertos abiertos"),
+        ("5","DNS RECORDS",   "bright_blue",    "Registros A, MX, NS, TXT..."),
+        ("6","HOST INFO",     "bright_white",   "CDN, servidor, SSL, headers"),
+        ("7","FULL SCAN",     "bold bright_red","Todo en uno sobre un dominio"),
+        ("0","SALIR",         "dim red",        ""),
+    ]:
         if num == "0":
             console.print(f"  [dim]  [{num}][/dim]  [{color}]{name}[/{color}]")
         else:
             console.print(f"  [bold bright_yellow]  [{num}][/bold bright_yellow]  [{color}]{name:<18}[/{color}][dim white]{desc}[/dim white]")
-
     console.print()
     console.print("  [dim yellow]  ══════════════════════════════════════[/dim yellow]")
-    return console.input(f"\n  [bold bright_yellow]  ❯[/bold bright_yellow] Opcion: ").strip()
+    return console.input(f"\n  [bold bright_yellow]  >[/bold bright_yellow] Opcion: ").strip()
+
 
 # ════════════════════════════════════════════════
 #   1. HOST SCANNER
@@ -190,9 +281,9 @@ def host_scanner():
     table.add_column("Host",     style="bright_white", no_wrap=True)
     table.add_column("IP",       style="dim white")
     table.add_column("Puerto",   justify="center", style="cyan")
-    table.add_column("Codigo",   justify="center")
-    table.add_column("Servidor", style="dim", max_width=16)
-    table.add_column("CDN",      style="bright_magenta", max_width=16)
+    table.add_column("CDN",      style="bright_magenta", max_width=14)
+    table.add_column("Tipo",     style="bright_cyan",    max_width=18)
+    table.add_column("Front",    style="bright_yellow",  max_width=20)
     table.add_column("Estado",   justify="center")
 
     def scan(domain):
@@ -205,16 +296,28 @@ def host_scanner():
                                      allow_redirects=False,
                                      headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
                 code = r.status_code
-                server = r.headers.get("server","—")
-                cdn = ", ".join(detect_cdn(domain, r))
+                cdns = detect_cdn(domain, r)
+                cdn_str = ", ".join(cdns)
+                tipo, payload, front, nota = generar_payload(domain, cdn_str, port)
+
                 if code in [200,204]:
                     estado = "[bold bright_green]✔ BUG HOST[/bold bright_green]"
-                    with lock: results_ok.append(domain)
+                    with lock: results_ok.append({
+                        "domain": domain, "ip": ip or "—", "puerto": port,
+                        "cdn": cdn_str, "tipo": tipo,
+                        "payload": payload, "front": front, "nota": nota
+                    })
                 elif 300 <= code < 400:
                     estado = "[bright_yellow]➜ REDIRECT[/bright_yellow]"
                 else:
                     estado = f"[dim]{code}[/dim]"
-                table.add_row(domain, ip or "—", str(port), str(code), server[:16], cdn[:16], estado)
+
+                table.add_row(
+                    domain, ip or "—", str(port),
+                    cdn_str[:14], tipo[:18],
+                    front[:20] if front != "—" else "[dim]—[/dim]",
+                    estado
+                )
                 break
             except: pass
         else:
@@ -223,7 +326,7 @@ def host_scanner():
     console.print()
     with Progress(SpinnerColumn("dots", style="bright_yellow"),
                   TextColumn("[bright_yellow]{task.description}"),
-                  BarColumn(complete_style="bright_green", finished_style="green"),
+                  BarColumn(complete_style="bright_green"),
                   TextColumn("[white]{task.completed}[/white][dim]/{task.total}[/dim]"),
                   console=console) as p:
         task = p.add_task("Escaneando hosts...", total=len(targets))
@@ -233,14 +336,44 @@ def host_scanner():
 
     console.print()
     console.print(table)
-    console.print(f"\n  [bold bright_green]✔ Bug hosts: {len(results_ok)}[/bold bright_green]")
+    console.print(f"\n  [bold bright_green]✔ Bug hosts encontrados: {len(results_ok)}[/bold bright_green]")
 
-    if results_ok and ask("Guardar resultados? (s/n)").lower() == "s":
-        fname = f"bughosts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(os.path.expanduser(f"~/{fname}"), "w") as f:
-            f.write("\n".join(results_ok))
-        console.print(f"  [bright_green]✔ Guardado:[/bright_green] ~/{fname}")
+    # Mostrar detalles de cada bug host encontrado
+    if results_ok:
+        console.print()
+        console.print("  [bold bright_yellow]◆ DETALLES Y PAYLOADS PARA HTTP CUSTOM[/bold bright_yellow]")
+        console.print(f"  [yellow]{'─'*52}[/yellow]")
+        for h in results_ok:
+            console.print(f"\n  [bold bright_green]► {h['domain']}[/bold bright_green]")
+            row("IP",          h['ip'],      "bright_cyan")
+            row("Puerto",      str(h['puerto']), "bright_white")
+            row("CDN",         h['cdn'],     "bright_magenta")
+            row("Tipo de host",h['tipo'],    "bright_yellow")
+            row("Domain Front",h['front'],   "bright_cyan")
+            row("Nota",        h['nota'],    "dim white")
+            console.print(f"\n  [dim white]  Payload HTTP Custom:[/dim white]")
+            console.print(f"  [bright_green]  {h['payload']}[/bright_green]")
+            separador()
+
+        if ask("Guardar resultados? (s/n)").lower() == "s":
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            contenido = f"SubScanLTM — Creado por {AUTHOR}\nCanal: {CANAL}\n"
+            contenido += f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            contenido += "=" * 52 + "\n\n"
+            for h in results_ok:
+                contenido += f"HOST: {h['domain']}\n"
+                contenido += f"IP: {h['ip']}\n"
+                contenido += f"Puerto: {h['puerto']}\n"
+                contenido += f"CDN: {h['cdn']}\n"
+                contenido += f"Tipo: {h['tipo']}\n"
+                contenido += f"Domain Front: {h['front']}\n"
+                contenido += f"Nota: {h['nota']}\n"
+                contenido += f"Payload HTTP Custom:\n{h['payload']}\n"
+                contenido += "-" * 40 + "\n\n"
+            guardar_archivo(f"bughosts_{ts}.txt", contenido)
+
     input("\n  Enter para continuar...")
+
 
 # ════════════════════════════════════════════════
 #   2. SUBFINDER
@@ -288,9 +421,9 @@ def subfinder():
 
     console.print()
     with Progress(SpinnerColumn("dots", style="bright_cyan"),
-                  TextColumn("[bright_cyan]Buscando subdominios de {task.description}"),
+                  TextColumn("[bright_cyan]Buscando subdominios..."),
                   console=console) as p:
-        p.add_task(domain, total=None)
+        p.add_task("", total=None)
         threads = [threading.Thread(target=fn) for fn in [crtsh,hackertarget,alienvault,rapiddns]]
         for t in threads: t.start()
         for t in threads: t.join()
@@ -299,17 +432,15 @@ def subfinder():
         console.print("  [yellow]⚠ Sin resultados[/yellow]")
         input("\n  Enter..."); return
 
-    # Resolver IP + detectar CDN por cada subdominio
-    info = {}  # sub -> {ip, cdn}
+    # Resolver IP + detectar CDN
+    info = {}
     lock2 = threading.Lock()
 
     def analizar(s):
         ip = resolve_ip(s)
-        cdn = "—"
-        # Intentar HTTP para detectar CDN por headers
         cnames = []
         try:
-            cnames = [c.to_text().lower() for c in dns.resolver.resolve(s, "CNAME")]
+            cnames = [c.to_text().lower() for c in dns.resolver.resolve(s,"CNAME")]
         except: pass
         try:
             r = requests.get(f"https://{s}", timeout=5, verify=False,
@@ -318,19 +449,18 @@ def subfinder():
             cdns = detect_cdn(s, r, cnames)
         except:
             cdns = detect_cdn(s, cnames=cnames)
-        cdn = ", ".join(cdns)
         with lock2:
-            info[s] = {"ip": ip, "cdn": cdn}
+            info[s] = {"ip": ip, "cdn": ", ".join(cdns)}
 
     console.print()
     with Progress(SpinnerColumn("dots", style="bright_cyan"),
-                  TextColumn("[bright_cyan]Detectando CDN y resolviendo IPs..."),
+                  TextColumn("[bright_cyan]Detectando CDN..."),
                   BarColumn(complete_style="bright_green"),
                   TextColumn("{task.completed}/{task.total}"),
                   console=console) as p:
         task = p.add_task("", total=len(subs))
         with concurrent.futures.ThreadPoolExecutor(max_workers=30) as ex:
-            for f in concurrent.futures.as_completed({ex.submit(analizar, s): s for s in subs}):
+            for f in concurrent.futures.as_completed({ex.submit(analizar,s):s for s in subs}):
                 p.advance(task)
 
     table = Table(box=box.ROUNDED, header_style="bold bright_cyan",
@@ -342,7 +472,7 @@ def subfinder():
     table.add_column("Activo",     justify="center")
 
     for i, s in enumerate(sorted(subs), 1):
-        d = info.get(s, {"ip": None, "cdn": "—"})
+        d   = info.get(s, {"ip": None, "cdn": "—"})
         ip  = d["ip"]
         cdn = d["cdn"]
         table.add_row(str(i), s, ip or "—", cdn,
@@ -351,11 +481,15 @@ def subfinder():
     console.print(f"\n  [bold bright_cyan]◆ Total: {len(subs)} subdominios[/bold bright_cyan]")
 
     if ask("Guardar? (s/n)").lower() == "s":
-        fname = f"subs_{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(os.path.expanduser(f"~/{fname}"), "w") as f:
-            f.write("\n".join(sorted(subs)))
-        console.print(f"  [bright_green]✔ Guardado:[/bright_green] ~/{fname}")
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        contenido = f"SubScanLTM — Subdominios de {domain}\nCreado por {AUTHOR} | {CANAL}\n\n"
+        for s in sorted(subs):
+            d = info.get(s, {"ip":"—","cdn":"—"})
+            contenido += f"{s} | IP: {d['ip'] or '—'} | CDN: {d['cdn']}\n"
+        guardar_archivo(f"subs_{domain}_{ts}.txt", contenido)
+
     input("\n  Enter para continuar...")
+
 
 # ════════════════════════════════════════════════
 #   3. IP LOOKUP
@@ -377,12 +511,12 @@ def ip_lookup():
             g = requests.get(f"http://ip-api.com/json/{ip}", timeout=8).json()
             console.print("  [bold bright_magenta]◆ Geolocalizacion[/bold bright_magenta]")
             separador()
-            row("IP",            g.get("query","—"),    "bright_cyan")
-            row("Pais",          g.get("country","—"),  "bright_white")
-            row("Ciudad",        g.get("city","—"),     "bright_white")
-            row("ISP",           g.get("isp","—"),      "bright_yellow")
-            row("Organizacion",  g.get("org","—"),      "bright_yellow")
-            row("AS",            g.get("as","—"),       "dim white")
+            row("IP",           g.get("query","—"),  "bright_cyan")
+            row("Pais",         g.get("country","—"),"bright_white")
+            row("Ciudad",       g.get("city","—"),   "bright_white")
+            row("ISP",          g.get("isp","—"),    "bright_yellow")
+            row("Organizacion", g.get("org","—"),    "bright_yellow")
+            row("AS",           g.get("as","—"),     "dim white")
             separador()
         except: pass
 
@@ -419,14 +553,16 @@ def ip_lookup():
         for i, d in enumerate(sorted(domains), 1):
             table.add_row(str(i), d)
         console.print(table)
+
         if ask("Guardar? (s/n)").lower() == "s":
-            fname = f"reverseip_{ip}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            with open(os.path.expanduser(f"~/{fname}"), "w") as f:
-                f.write("\n".join(sorted(domains)))
-            console.print(f"  [bright_green]✔ Guardado:[/bright_green] ~/{fname}")
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            contenido = f"SubScanLTM — Reverse IP: {ip}\nCreado por {AUTHOR} | {CANAL}\n\n"
+            contenido += "\n".join(sorted(domains))
+            guardar_archivo(f"reverseip_{ip}_{ts}.txt", contenido)
     else:
         console.print("\n  [yellow]⚠ Sin dominios encontrados[/yellow]")
     input("\n  Enter para continuar...")
+
 
 # ════════════════════════════════════════════════
 #   4. PORT SCANNER
@@ -447,7 +583,7 @@ def port_scanner():
     else:
         ports = COMMON_PORTS
 
-    console.print(f"\n  [dim white]IP: {ip}  |  {len(ports)} puertos objetivo[/dim white]\n")
+    console.print(f"\n  [dim white]IP: {ip}  |  {len(ports)} puertos[/dim white]\n")
     open_ports = []
     lock = threading.Lock()
 
@@ -462,7 +598,7 @@ def port_scanner():
     with Progress(SpinnerColumn("dots", style="bright_yellow"),
                   TextColumn("[bright_yellow]Escaneando puertos..."),
                   BarColumn(complete_style="bright_green"),
-                  TextColumn("[white]{task.completed}[/white][dim]/{task.total}[/dim]"),
+                  TextColumn("{task.completed}/{task.total}"),
                   console=console) as p:
         task = p.add_task("", total=len(ports))
         with concurrent.futures.ThreadPoolExecutor(max_workers=100) as ex:
@@ -483,6 +619,7 @@ def port_scanner():
         console.print("  [red]✘ Sin puertos abiertos[/red]")
     input("\n  Enter para continuar...")
 
+
 # ════════════════════════════════════════════════
 #   5. DNS RECORDS
 # ════════════════════════════════════════════════
@@ -495,10 +632,8 @@ def dns_records():
     resolver.lifetime = 10
     cnames = []
     found = False
-
     COLORS = {"A":"bright_green","AAAA":"bright_cyan","CNAME":"bright_yellow",
               "MX":"bright_magenta","NS":"bright_blue","TXT":"white","SOA":"dim white"}
-
     for rtype in ["A","AAAA","CNAME","MX","NS","TXT","SOA"]:
         try:
             answers = resolver.resolve(domain, rtype)
@@ -508,17 +643,17 @@ def dns_records():
             for r in answers:
                 val = r.to_text()
                 if rtype == "CNAME": cnames.append(val.lower())
-                row("→", val, color)
+                row("->", val, color)
             separador()
             found = True
         except: pass
-
     if not found:
         console.print("  [yellow]⚠ Sin registros DNS[/yellow]")
     if cnames:
         cdn = ", ".join(detect_cdn(domain, cnames=cnames))
         console.print(f"\n  [dim white]CDN por CNAME:[/dim white] [bright_magenta]{cdn}[/bright_magenta]")
     input("\n  Enter para continuar...")
+
 
 # ════════════════════════════════════════════════
 #   6. HOST INFO
@@ -548,14 +683,21 @@ def host_info():
             console.print(f"\n  [bold bright_green]◆ HTTP {proto.upper()}[/bold bright_green]")
             separador()
             code = r.status_code
-            row("Codigo",       str(code), "bright_green" if code==200 else "bright_yellow")
-            row("Servidor",     r.headers.get("server","—"),       "bright_white")
-            row("X-Powered-By", r.headers.get("x-powered-by","—"),"dim white")
+            row("Codigo",        str(code), "bright_green" if code==200 else "bright_yellow")
+            row("Servidor",      r.headers.get("server","—"), "bright_white")
+            row("X-Powered-By",  r.headers.get("x-powered-by","—"), "dim white")
             cnames = []
             try: cnames = [c.to_text().lower() for c in dns.resolver.resolve(domain,"CNAME")]
             except: pass
-            cdn = ", ".join(detect_cdn(domain, r, cnames))
-            row("CDN", cdn, "bright_magenta")
+            cdns = detect_cdn(domain, r, cnames)
+            cdn_str = ", ".join(cdns)
+            row("CDN", cdn_str, "bright_magenta")
+
+            # Payload sugerido
+            tipo, payload, front, nota = generar_payload(domain, cdn_str, 443 if proto=="https" else 80)
+            row("Tipo de host",  tipo,    "bright_cyan")
+            row("Domain Front",  front,   "bright_yellow")
+            row("Payload",       payload[:50]+"...", "dim green")
             separador()
 
             console.print(f"\n  [bold bright_blue]◆ Headers de Seguridad[/bold bright_blue]")
@@ -573,20 +715,21 @@ def host_info():
         with ctx.wrap_socket(socket.socket(), server_hostname=domain) as s:
             s.settimeout(TIMEOUT); s.connect((domain,443))
             cert = s.getpeercert()
-            console.print(f"\n  [bold bright_cyan]◆ Certificado SSL/TLS[/bold bright_cyan]")
+            console.print(f"\n  [bold bright_cyan]◆ SSL/TLS[/bold bright_cyan]")
             separador()
             subj   = dict(x[0] for x in cert.get("subject",[]))
             issuer = dict(x[0] for x in cert.get("issuer",[]))
-            row("Comun",  subj.get("commonName","—"),           "bright_white")
-            row("Emisor", issuer.get("organizationName","—"),   "bright_yellow")
-            row("Expira", cert.get("notAfter","—"),             "bright_green")
+            row("Comun",  subj.get("commonName","—"),          "bright_white")
+            row("Emisor", issuer.get("organizationName","—"),  "bright_yellow")
+            row("Expira", cert.get("notAfter","—"),            "bright_green")
             sans = [v for t,v in cert.get("subjectAltName",[]) if t=="DNS"]
-            row("SANs",   f"{len(sans)} dominios cubiertos",   "bright_cyan")
+            row("SANs",   f"{len(sans)} dominios",             "bright_cyan")
             separador()
     except:
         console.print("  [dim red]SSL no disponible[/dim red]")
 
     input("\n  Enter para continuar...")
+
 
 # ════════════════════════════════════════════════
 #   7. FULL SCAN
@@ -598,8 +741,7 @@ def full_scan():
     ip = resolve_ip(domain)
     console.print(f"\n  [bold bright_yellow]◆ Objetivo:[/bold bright_yellow] [bright_white]{domain}[/bright_white]  [dim]({ip or 'sin IP'})[/dim]\n")
 
-    # GEO
-    console.print("  [bold bright_magenta]━━  GEO & RED  ━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold bright_magenta]")
+    console.rule("[bold bright_magenta]GEO[/bold bright_magenta]")
     try:
         g = requests.get(f"http://ip-api.com/json/{ip}", timeout=8).json()
         row("IP",   ip or "—",          "bright_cyan")
@@ -607,21 +749,26 @@ def full_scan():
         row("ISP",  g.get("isp","—"),    "bright_yellow")
     except: pass
 
-    # HTTP
-    console.print("\n  [bold bright_green]━━  HTTP & CDN  ━━━━━━━━━━━━━━━━━━━━━━━━━[/bold bright_green]")
+    console.rule("[bold bright_green]HTTP & CDN[/bold bright_green]")
+    cdn_str = "Ninguno"
     for proto in ["https","http"]:
         r = http_get(f"{proto}://{domain}")
         if r:
             cnames = []
             try: cnames = [c.to_text().lower() for c in dns.resolver.resolve(domain,"CNAME")]
             except: pass
+            cdns = detect_cdn(domain, r, cnames)
+            cdn_str = ", ".join(cdns)
             row("Codigo",  str(r.status_code), "bright_green" if r.status_code==200 else "yellow")
             row("Servidor",r.headers.get("server","—"), "bright_white")
-            row("CDN",     ", ".join(detect_cdn(domain, r, cnames)), "bright_magenta")
+            row("CDN",     cdn_str, "bright_magenta")
+            puerto = 443 if proto=="https" else 80
+            tipo, payload, front, nota = generar_payload(domain, cdn_str, puerto)
+            row("Tipo host", tipo,  "bright_cyan")
+            row("Front",     front, "bright_yellow")
             break
 
-    # DNS
-    console.print("\n  [bold bright_blue]━━  DNS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold bright_blue]")
+    console.rule("[bold bright_blue]DNS[/bold bright_blue]")
     resolver = dns.resolver.Resolver(); resolver.timeout = 4
     for rtype in ["A","CNAME","MX","NS"]:
         try:
@@ -629,20 +776,18 @@ def full_scan():
                 row(rtype, r.to_text()[:55], "bright_green" if rtype=="A" else "bright_white")
         except: pass
 
-    # SSL
-    console.print("\n  [bold bright_cyan]━━  SSL  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold bright_cyan]")
+    console.rule("[bold bright_cyan]SSL[/bold bright_cyan]")
     try:
         ctx = ssl.create_default_context()
         with ctx.wrap_socket(socket.socket(), server_hostname=domain) as s:
             s.settimeout(TIMEOUT); s.connect((domain,443))
             cert = s.getpeercert()
             subj = dict(x[0] for x in cert.get("subject",[]))
-            row("CN",     subj.get("commonName","—"),  "bright_white")
-            row("Expira", cert.get("notAfter","—"),    "bright_green")
+            row("CN",     subj.get("commonName","—"), "bright_white")
+            row("Expira", cert.get("notAfter","—"),   "bright_green")
     except: console.print("  [dim red]SSL no disponible[/dim red]")
 
-    # SUBDOMINIOS
-    console.print("\n  [bold bright_yellow]━━  SUBDOMINIOS  ━━━━━━━━━━━━━━━━━━━━━━━━[/bold bright_yellow]")
+    console.rule("[bold bright_yellow]SUBDOMINIOS[/bold bright_yellow]")
     subs = set()
     try:
         r = requests.get(f"https://crt.sh/?q=%.{domain}&output=json", timeout=15)
@@ -657,15 +802,13 @@ def full_scan():
             s = line.split(",")[0].strip().lower()
             if s.endswith(f".{domain}"): subs.add(s)
     except: pass
-    console.print(f"  [bold bright_green]✔ {len(subs)} subdominios encontrados[/bold bright_green]")
-    for s in sorted(subs)[:15]: row("→", s, "dim white")
+    console.print(f"  [bright_green]{len(subs)} subdominios encontrados[/bright_green]")
+    for s in sorted(subs)[:15]: row("->", s, "dim white")
     if len(subs) > 15: console.print(f"  [dim]  ... y {len(subs)-15} mas[/dim]")
 
-    # PUERTOS
-    console.print("\n  [bold bright_yellow]━━  PUERTOS CLAVE  ━━━━━━━━━━━━━━━━━━━━━━[/bold bright_yellow]")
+    console.rule("[bold bright_yellow]PUERTOS[/bold bright_yellow]")
     open_ports = []
     lock = threading.Lock()
-    key_ports = [22,80,443,1080,3128,8080,8443,3389,8888]
     def sp(port):
         try:
             s = socket.socket(); s.settimeout(2)
@@ -674,22 +817,25 @@ def full_scan():
             s.close()
         except: pass
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:
-        ex.map(sp, key_ports)
+        ex.map(sp, [22,80,443,1080,3128,8080,8443,3389,8888])
     for p in sorted(open_ports):
-        row(f"Puerto {p}", f"{PORT_NAMES.get(p,'?')}  ●  ABIERTO", "bright_green")
+        row(f"Puerto {p}", f"{PORT_NAMES.get(p,'?')}  ABIERTO", "bright_green")
     if not open_ports: console.print("  [dim]Sin puertos clave abiertos[/dim]")
 
-    console.print(f"\n  [bold bright_yellow]◆ FULL SCAN COMPLETADO  ✔[/bold bright_yellow]\n")
+    console.rule("[bold bright_yellow]FULL SCAN COMPLETADO[/bold bright_yellow]")
 
     if ask("Guardar reporte? (s/n)").lower() == "s":
-        fname = f"fullscan_{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(os.path.expanduser(f"~/{fname}"), "w") as f:
-            f.write(f"SubScanLTM — Creado por {AUTHOR}\nCanal: {CANAL}\n\n")
-            f.write(f"Dominio: {domain}\nIP: {ip}\n")
-            f.write(f"\nSubdominios ({len(subs)}):\n" + "\n".join(sorted(subs)))
-            f.write(f"\nPuertos abiertos: {open_ports}\n")
-        console.print(f"  [bright_green]✔ Guardado:[/bright_green] ~/{fname}")
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        contenido  = f"SubScanLTM — Full Scan\nCreado por {AUTHOR} | {CANAL}\n"
+        contenido += f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        contenido += "=" * 52 + "\n"
+        contenido += f"Dominio: {domain}\nIP: {ip}\nCDN: {cdn_str}\n"
+        contenido += f"\nSubdominios ({len(subs)}):\n" + "\n".join(sorted(subs))
+        contenido += f"\nPuertos abiertos: {open_ports}\n"
+        guardar_archivo(f"fullscan_{domain}_{ts}.txt", contenido)
+
     input("\n  Enter para continuar...")
+
 
 # ════════════════════════════════════════════════
 #   MAIN
@@ -700,7 +846,7 @@ def main():
         actions = {"1":host_scanner,"2":subfinder,"3":ip_lookup,
                    "4":port_scanner,"5":dns_records,"6":host_info,"7":full_scan}
         if choice == "0":
-            console.print(f"\n  [bright_yellow]◆ Hasta luego! — SubScanLTM[/bright_yellow]")
+            console.print(f"\n  [bright_yellow]◆ Hasta luego![/bright_yellow]")
             console.print(f"  [dim]Creado por {AUTHOR}  |  {CANAL}[/dim]\n")
             sys.exit(0)
         elif choice in actions:
