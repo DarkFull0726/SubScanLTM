@@ -485,24 +485,16 @@ def subfinder():
             for f in concurrent.futures.as_completed({ex.submit(analizar,s):s for s in subs}):
                 p.advance(task)
 
-    # Tabla resumen — simple para que entre en pantalla movil
-    table = Table(box=box.SIMPLE_HEAD, header_style="bold bright_cyan",
-                  show_lines=False, pad_edge=False)
-    table.add_column("#",          justify="right", style="dim white",    width=3)
-    table.add_column("Subdominio", style="bright_white",                  max_width=34)
-    table.add_column("CDN",        style="bright_magenta",                max_width=12)
-    table.add_column("OK",         justify="center",                      width=4)
-
+    # Tabla minimalista para movil
+    console.print()
     for i, s in enumerate(sorted(subs), 1):
         d   = info.get(s, {"ip":None,"cdn":"—"})
         ip  = d["ip"]
-        cdn = d["cdn"][:12]
-        table.add_row(
-            str(i), s,
-            cdn,
-            "[bright_green]SI[/bright_green]" if ip else "[dim red]NO[/dim red]"
-        )
-    console.print(table)
+        cdn = d["cdn"]
+        activo = "[bright_green]✔[/bright_green]" if ip else "[red]✘[/red]"
+        console.print(f"  {activo} [bright_white]{s}[/bright_white]")
+        console.print(f"    [dim]IP:[/dim] [bright_cyan]{ip or '—'}[/bright_cyan]  [dim]CDN:[/dim] [bright_magenta]{cdn}[/bright_magenta]")
+
     console.print(f"\n  [bold bright_cyan]◆ Total: {len(subs)} subdominios[/bold bright_cyan]")
 
     # Detalle completo de cada subdominio activo
