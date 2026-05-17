@@ -432,29 +432,51 @@ def subfinder():
         console.print("  [yellow]⚠ Sin resultados[/yellow]")
         input("\n  Enter..."); return
 
-    # Resolver IP + detectar CDN
+    # Resolver IP + CDN + cabeceras + payload
     info = {}
     lock2 = threading.Lock()
 
     def analizar(s):
         ip = resolve_ip(s)
         cnames = []
+        servidor = "—"
+        codigo   = "—"
+        cdn_str  = "Ninguno"
+        tipo = payload = front = nota = "—"
+        puerto_usado = 443
+
         try:
             cnames = [c.to_text().lower() for c in dns.resolver.resolve(s,"CNAME")]
         except: pass
-        try:
-            r = requests.get(f"https://{s}", timeout=5, verify=False,
-                             allow_redirects=False,
-                             headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
-            cdns = detect_cdn(s, r, cnames)
-        except:
-            cdns = detect_cdn(s, cnames=cnames)
+
+        for port in [443, 80]:
+            proto = "https" if port == 443 else "http"
+            try:
+                r = requests.get(f"{proto}://{s}", timeout=5, verify=False,
+                                 allow_redirects=False,
+                                 headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
+                cdns     = detect_cdn(s, r, cnames)
+                cdn_str  = ", ".join(cdns)
+                servidor = r.headers.get("server", r.headers.get("Server","—"))
+                codigo   = str(r.status_code)
+                puerto_usado = port
+                break
+            except:
+                cdns    = detect_cdn(s, cnames=cnames)
+                cdn_str = ", ".join(cdns)
+
+        tipo, payload, front, nota = generar_payload(s, cdn_str, puerto_usado)
+
         with lock2:
-            info[s] = {"ip": ip, "cdn": ", ".join(cdns)}
+            info[s] = {
+                "ip": ip, "cdn": cdn_str, "servidor": servidor,
+                "codigo": codigo, "tipo": tipo, "payload": payload,
+                "front": front, "nota": nota, "puerto": puerto_usado
+            }
 
     console.print()
     with Progress(SpinnerColumn("dots", style="bright_cyan"),
-                  TextColumn("[bright_cyan]Detectando CDN..."),
+                  TextColumn("[bright_cyan]Analizando subdominios (CDN + cabeceras + payload)..."),
                   BarColumn(complete_style="bright_green"),
                   TextColumn("{task.completed}/{task.total}"),
                   console=console) as p:
@@ -463,29 +485,70 @@ def subfinder():
             for f in concurrent.futures.as_completed({ex.submit(analizar,s):s for s in subs}):
                 p.advance(task)
 
+    # Tabla resumen
     table = Table(box=box.ROUNDED, header_style="bold bright_cyan",
                   border_style="cyan", show_lines=False)
     table.add_column("#",          justify="right", style="dim white")
-    table.add_column("Subdominio", style="bright_white")
-    table.add_column("IP",         style="bright_cyan")
-    table.add_column("CDN",        style="bright_magenta", max_width=20)
+    table.add_column("Subdominio", style="bright_white", no_wrap=True)
+    table.add_column("IP",         style="bright_cyan",    max_width=15)
+    table.add_column("Cod",        justify="center",       max_width=5)
+    table.add_column("CDN",        style="bright_magenta", max_width=16)
+    table.add_column("Tipo",       style="bright_yellow",  max_width=18)
     table.add_column("Activo",     justify="center")
 
     for i, s in enumerate(sorted(subs), 1):
-        d   = info.get(s, {"ip": None, "cdn": "—"})
+        d   = info.get(s, {"ip":None,"cdn":"—","codigo":"—","tipo":"—"})
         ip  = d["ip"]
-        cdn = d["cdn"]
-        table.add_row(str(i), s, ip or "—", cdn,
-                      "[bold bright_green]SI[/bold bright_green]" if ip else "[dim red]NO[/dim red]")
+        cod = d["codigo"]
+        color_cod = "bright_green" if cod == "200" else "yellow" if cod.startswith("3") else "dim"
+        table.add_row(
+            str(i), s, ip or "—",
+            f"[{color_cod}]{cod}[/{color_cod}]",
+            d["cdn"][:16], d["tipo"][:18],
+            "[bold bright_green]SI[/bold bright_green]" if ip else "[dim red]NO[/dim red]"
+        )
     console.print(table)
     console.print(f"\n  [bold bright_cyan]◆ Total: {len(subs)} subdominios[/bold bright_cyan]")
 
+    # Detalle completo de cada subdominio activo
+    activos = [s for s in sorted(subs) if info.get(s,{}).get("ip")]
+    if activos:
+        console.print()
+        console.print("  [bold bright_yellow]◆ DETALLE — CABECERAS Y PAYLOAD HTTP CUSTOM[/bold bright_yellow]")
+        console.print(f"  [yellow]{'─'*52}[/yellow]")
+        for s in activos:
+            d = info[s]
+            console.print(f"\n  [bold bright_green]► {s}[/bold bright_green]")
+            row("IP",           d["ip"],       "bright_cyan")
+            row("Puerto",       str(d["puerto"]),"bright_white")
+            row("Codigo HTTP",  d["codigo"],   "bright_green" if d["codigo"]=="200" else "yellow")
+            row("Servidor",     d["servidor"], "bright_white")
+            row("CDN",          d["cdn"],      "bright_magenta")
+            row("Tipo de host", d["tipo"],     "bright_yellow")
+            row("Domain Front", d["front"],    "bright_cyan")
+            row("Nota",         d["nota"],     "dim white")
+            console.print(f"\n  [dim white]  Payload HTTP Custom:[/dim white]")
+            console.print(f"  [bright_green]  {d['payload']}[/bright_green]")
+            separador()
+
     if ask("Guardar? (s/n)").lower() == "s":
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        contenido = f"SubScanLTM — Subdominios de {domain}\nCreado por {AUTHOR} | {CANAL}\n\n"
+        contenido  = f"SubScanLTM — Subdominios de {domain}\n"
+        contenido += f"Creado por {AUTHOR} | {CANAL}\n"
+        contenido += f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        contenido += "=" * 52 + "\n\n"
         for s in sorted(subs):
-            d = info.get(s, {"ip":"—","cdn":"—"})
-            contenido += f"{s} | IP: {d['ip'] or '—'} | CDN: {d['cdn']}\n"
+            d = info.get(s, {})
+            contenido += f"SUBDOMINIO: {s}\n"
+            contenido += f"  IP:           {d.get('ip','—')}\n"
+            contenido += f"  Codigo HTTP:  {d.get('codigo','—')}\n"
+            contenido += f"  Servidor:     {d.get('servidor','—')}\n"
+            contenido += f"  CDN:          {d.get('cdn','—')}\n"
+            contenido += f"  Tipo host:    {d.get('tipo','—')}\n"
+            contenido += f"  Domain Front: {d.get('front','—')}\n"
+            contenido += f"  Nota:         {d.get('nota','—')}\n"
+            contenido += f"  Payload:\n  {d.get('payload','—')}\n"
+            contenido += "-" * 40 + "\n\n"
         guardar_archivo(f"subs_{domain}_{ts}.txt", contenido)
 
     input("\n  Enter para continuar...")
