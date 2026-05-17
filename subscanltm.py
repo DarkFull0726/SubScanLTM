@@ -39,7 +39,7 @@ colorama.init()
 requests.packages.urllib3.disable_warnings()
 console = Console()
 
-VERSION  = "1.3.0"
+VERSION  = "1.4.0"
 AUTHOR   = "@DarkZFull"
 CANAL    = "https://t.me/LTMCHANNEL"
 TIMEOUT  = 8
@@ -78,76 +78,67 @@ CDN_SIGNATURES = {
 #   PAYLOADS HTTP CUSTOM
 # ════════════════════════════════════════════════
 def generar_payload(host, cdn, puerto):
-    """
-    Genera payload para HTTP Custom.
-    Cloudflare y Cloudfront usan el mismo formato:
-      GET / HTTP/1.1[crlf]Host: DOMINIO[crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
-    El host va FUERA del payload en HTTP Custom (campo SNI/Host separado).
-    """
-    es_cf    = "Cloudflare" in cdn
-    es_cfr   = "Cloudfront" in cdn
-    es_cdn   = any(x in cdn for x in ["Akamai","Fastly","Azure","Google","BunnyCDN"])
-    es_443   = puerto in [443, 8443]
+    CF  = "Cloudflare" in cdn
+    CFR = "Cloudfront" in cdn
+    CDN = any(x in cdn for x in ["Akamai","Fastly","Azure","Google","BunnyCDN"])
+    S443 = puerto in [443, 8443]
 
-    # Cloudflare o Cloudfront — mismo payload, host como front
-    if es_cf or es_cfr:
-        nombre = "Cloudflare" if es_cf else "Cloudfront (AWS)"
+    CRLF = "[crlf]"
+
+    if CF or CFR:
+        nombre = "Cloudflare" if CF else "Cloudfront (AWS)"
         tipo   = f"{nombre} WebSocket"
         payload = (
-            f"GET / HTTP/1.1[crlf]"
-            f"Host: {host}[crlf]"
-            f"Connection: Upgrade[crlf]"
-            f"User-Agent: [ua][crlf]"
-            f"Upgrade: websocket[crlf][crlf]"
+            f"GET / HTTP/1.1{CRLF}"
+            f"Host: {host}{CRLF}"
+            f"Connection: Upgrade{CRLF}"
+            f"User-Agent: [ua]{CRLF}"
+            f"Upgrade: websocket{CRLF}{CRLF}"
         )
         front = host
-        nota  = f"Host en campo SNI/Host de HTTP Custom: {host}"
+        nota  = f"Pon este dominio en el campo Host/SNI de HTTP Custom"
 
-    # Otro CDN con HTTPS
-    elif es_cdn and es_443:
+    elif CDN and S443:
         tipo = "CDN Front HTTPS"
         payload = (
-            f"GET / HTTP/1.1[crlf]"
-            f"Host: {host}[crlf]"
-            f"Connection: Upgrade[crlf]"
-            f"User-Agent: [ua][crlf]"
-            f"Upgrade: websocket[crlf][crlf]"
+            f"GET / HTTP/1.1{CRLF}"
+            f"Host: {host}{CRLF}"
+            f"Connection: Upgrade{CRLF}"
+            f"User-Agent: [ua]{CRLF}"
+            f"Upgrade: websocket{CRLF}{CRLF}"
         )
         front = host
-        nota  = "Domain fronting via CDN"
+        nota  = "Domain fronting via CDN HTTPS"
 
-    # Otro CDN con HTTP
-    elif es_cdn and not es_443:
+    elif CDN and not S443:
         tipo = "CDN Front HTTP"
         payload = (
-            f"GET / HTTP/1.1[crlf]"
-            f"Host: {host}[crlf]"
-            f"Connection: Keep-Alive[crlf]"
-            f"User-Agent: [ua][crlf][crlf]"
+            f"GET / HTTP/1.1{CRLF}"
+            f"Host: {host}{CRLF}"
+            f"Connection: Keep-Alive{CRLF}"
+            f"User-Agent: [ua]{CRLF}{CRLF}"
         )
         front = host
         nota  = "Domain fronting HTTP"
 
-    # Sin CDN HTTPS directo
-    elif es_443:
+    elif S443:
         tipo = "Direct HTTPS"
         payload = (
-            f"CONNECT [host_vps]:[puerto] HTTP/1.1[crlf]"
-            f"Host: {host}[crlf]"
-            f"Connection: Keep-Alive[crlf]"
-            f"User-Agent: [ua][crlf][crlf]"
+            f"CONNECT [host_vps]:[puerto] HTTP/1.1{CRLF}"
+            f"Host: {host}{CRLF}"
+            f"Connection: Keep-Alive{CRLF}"
+            f"User-Agent: [ua]{CRLF}{CRLF}"
         )
         front = "—"
         nota  = "Conexion directa HTTPS sin CDN"
 
-    # Sin CDN HTTP directo
     else:
         tipo = "Direct HTTP"
         payload = (
-            f"GET / HTTP/1.1[crlf]"
-            f"Host: {host}[crlf]"
-            f"Connection: Keep-Alive[crlf]"
-            f"User-Agent: [ua][crlf][crlf]"
+            f"GET / HTTP/1.1{CRLF}"
+            f"Host: {host}{CRLF}"
+            f"Connection: Keep-Alive{CRLF}"
+            f"User-Agent: [ua]{CRLF}{CRLF}"
         )
         front = "—"
         nota  = "Conexion directa HTTP sin CDN"
@@ -189,7 +180,30 @@ def http_get(url):
                             headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
     except: return None
 
-def detect_cdn(domain, response=None, cnames=None):
+def ip_es_cloudfront(ip):
+    """IPs en rangos conocidos de Cloudfront"""
+    if not ip: return False
+    # Rangos comunes de AWS Cloudfront
+    prefijos_cf = [
+        "13.32.","13.35.","13.224.","13.225.","13.226.","13.227.","13.228.",
+        "13.249.","13.249.","18.64.","18.65.","18.66.","18.67.","18.68.",
+        "52.84.","52.85.","52.222.","52.46.","64.252.","65.8.","65.9.",
+        "70.132.","99.84.","108.156.","108.157.","108.158.","108.159.",
+        "143.204.","204.246.","205.251.","216.137.",
+    ]
+    return any(ip.startswith(p) for p in prefijos_cf)
+
+def ip_es_cloudflare(ip):
+    """IPs en rangos conocidos de Cloudflare"""
+    if not ip: return False
+    prefijos = [
+        "103.21.","103.22.","103.31.","104.16.","104.17.","104.18.","104.19.","104.20.","104.21.",
+        "108.162.","131.0.72.","141.101.","162.158.","172.64.","172.65.","172.66.","172.67.",
+        "173.245.","188.114.","190.93.","197.234.","198.41.",
+    ]
+    return any(ip.startswith(p) for p in prefijos)
+
+def detect_cdn(domain, response=None, cnames=None, ip=None):
     found = []
     hdrs, server = {}, ""
     if response:
@@ -201,6 +215,12 @@ def detect_cdn(domain, response=None, cnames=None):
         if cnames:
             hit = hit or any(p in cn for cn in cnames for p in sigs["cname"])
         if hit: found.append(cdn)
+    # Detección adicional por IP si no se detectó nada por headers/cname
+    if not found and ip:
+        if ip_es_cloudfront(ip):
+            found.append("Cloudfront (AWS)")
+        elif ip_es_cloudflare(ip):
+            found.append("Cloudflare")
     return found if found else ["Ninguno"]
 
 def guardar_archivo(nombre, contenido):
@@ -462,18 +482,18 @@ def subfinder():
                 r = requests.get(f"{proto}://{s}", timeout=5, verify=False,
                                  allow_redirects=False,
                                  headers={"User-Agent":"Mozilla/5.0 SubScanLTM"})
-                cdns_detectados = detect_cdn(s, r, cnames)
-                # Si headers no detectaron CDN pero CNAME si — usar CNAME
-                if cdns_detectados == ["Ninguno"] and cnames:
-                    cdns_detectados = detect_cdn(s, cnames=cnames)
+                cdns_detectados = detect_cdn(s, r, cnames, ip)
+                # Si headers no detectaron CDN pero CNAME o IP si
+                if cdns_detectados == ["Ninguno"]:
+                    cdns_detectados = detect_cdn(s, cnames=cnames, ip=ip)
                 cdn_str  = ", ".join(cdns_detectados)
                 servidor = r.headers.get("server", r.headers.get("Server","—"))
                 codigo   = str(r.status_code)
                 puerto_usado = port
                 break
             except:
-                # Sin respuesta HTTP — intentar solo por CNAME
-                cdns_por_cname = detect_cdn(s, cnames=cnames)
+                # Sin respuesta HTTP — intentar por CNAME e IP
+                cdns_por_cname = detect_cdn(s, cnames=cnames, ip=ip)
                 if cdns_por_cname != ["Ninguno"]:
                     cdn_str = ", ".join(cdns_por_cname)
 
